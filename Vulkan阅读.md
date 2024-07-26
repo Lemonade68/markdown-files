@@ -68,6 +68,8 @@ descriptor set layout：用于给不同的shader stages 绑定不同的descripto
 
 <img src="Vulkan阅读.assets/image-20240315102500772.png" alt="image-20240315102500772" style="zoom:50%;" />
 
+**2024/4/1总结**：先搞定pool（说明白每种类型的descriptor各要多少个（set个数*每个set中有多少个），以及最多分配的个数）；然后解决layout（可以有多种布局方式）；最后分配真实的set（绑定pool 和 layout 和 要分配的个数，然后绑定writeDescriptorSets（其中包含真正的信息），最后vkUpdateDescriptorSets）
+
 ***
 
 vkMapMemory：将最后一个参数指向的地址与device中分配的内存buffer进行映射，从而使得通过最后参数指针可以修改分配的buffer的内容
@@ -111,6 +113,10 @@ glsl中，layout后面的location，set和binding的含义：
 <img src="Vulkan阅读.assets/image-20240314201150792.png" alt="image-20240314201150792" style="zoom: 67%;" />
 
 <img src="Vulkan阅读.assets/image-20240315134736229.png" alt="image-20240315134736229" style="zoom: 67%;" />
+
+其中，具体在一个frag和vert shader中有几个set是在pipeline layout那里
+
+
 
 ***
 
@@ -282,6 +288,235 @@ surface这个东西只跟swapchain有关，因此放在里面，然后包括inst
 
 <img src="Vulkan阅读.assets/image-20240331193141063.png" alt="image-20240331193141063" style="zoom:67%;" />
 
+
+
+***
+
+## pNext指针的意义
+
+![image-20240609155115892](Vulkan阅读.assets/image-20240609155115892.png)
+
+https://www.youtube.com/watch?v=tLwbj9qys18&list=PLmIqTlJ6KsE1Jx5HV4sd2jOe3V1KMHHgn
+
+
+
+***
+
+## Vulkan YouTube视频
+
+### presentation mode
+
+* immediate/ FIFO/ MAILBOX等
+* vertical blank period(vb)：屏幕从上到下present完一张图片的时间（一次完整扫描）
+* **immediate**：不等vectical blank，直接交换，可能导致tearing 
+* **FIFO**：等（且必须等下一个vertical blank发生），但是可能造成lagging（如果画的很慢的话，屏幕会先经过很多个vb，然后image会在to be presented队列里先等待下一个vertical blank，然后渲染）
+* **FIFO Relaxed**：解决上面的问题，如果图片画好后检测到屏幕没画面，会不管vb和to be presented队列直接进入，从而减少延迟，但是可能在扫描一半时进入，再次造成tearing
+* **mailbox**：将to be presented队列优化为一个只能放一张图片的mailbox（因此图片渲染过快的话会将之前已经画好，但是还没有present的mailbox图片直接挤掉）
+  * <img src="Vulkan阅读.assets/image-20240609164148489.png" alt="image-20240609164148489" style="zoom:50%;" />
+
+
+
+### resource & descriptors
+
+* resource：
+
+  * buffers
+  * images
+  * samplers
+  * Acceleration structures
+
+* descriptors：用于描述上述资源
+
+* buffer：
+
+  * load = read only
+
+* 第3集14:34开始，总结buffer和image
+
+  * https://www.youtube.com/watch?v=5VBVWCg7riQ&list=PLmIqTlJ6KsE1Jx5HV4sd2jOe3V1KMHHgn&index=3
+  * <img src="Vulkan阅读.assets/image-20240609193731889.png" alt="image-20240609193731889" style="zoom:67%;" />
+
+* descriptor set的绑定，在cmd buffer level（尽可能少的更改绑定），即能多复用就多复用，少更改idx，如下：
+
+  <img src="Vulkan阅读.assets/image-20240609194437032.png" alt="image-20240609194437032" style="zoom:67%;" />
+
+  然后的过程：将这个cmd1-4打包给到queue，gpu编译后自动将上图中已经分配好的资源分别给到对应的cmd，最后submit
+
+* bind_point：对应不同管线下的不同binding，互不干扰，如下图：
+
+  <img src="Vulkan阅读.assets/image-20240609194833325.png" alt= "image-20240609194833325" style="zoom:67%;" />
+
+* 关于descriptors的具体下图，见外面的pdf文件
+
+  <img src="Vulkan阅读.assets/image-20240609200340283.png" alt="image-20240609200340283" style="zoom:67%;" />
+
+
+
+### Commands & command buffers
+
+* command buffer usage mode:
+  * reuse(submit multiple times)
+  * single-use(submit once)
+  * reset & rerecord
+
+* primary vs secondary cmd buffers
+
+  <img src="Vulkan阅读.assets/image-20240609204559355.png" alt="image-20240609204559355" style="zoom:67%;" />
+
+  * 注意 secondary cmd buffers 并不从primary cmd buffers上继承states
+
+* data -> cmd的方式
+
+  * descriptors
+
+    * 传入上面所说的资源之类的（注意与第4点区分）
+
+  * push constants
+
+    * 直接在cmd buffer中保存，注意大小的限制是对于每一个cmd而言的，并不是对于整个cmd buffer而言
+
+  * parameters
+
+    * 例如一些不支持descriptor的操作，如vkcmdcopybuffer
+
+  * attributes
+
+    * 即例如顶点数据这种，shader中使用layout(location = 0)来获取的
+
+    * 下图中，binding表示的是整体数据，attribute表示的是对整体中某一部分数据的描述（两者的.binding要对应，且都对应内存中的某一个buffer）
+
+      <img src="Vulkan阅读.assets/image-20240609211247231.png" alt="image-20240609211247231" style="zoom:67%;" />
+
+
+
+### pipelines & stages
+
+* graphics pipeline：
+
+  <img src="Vulkan阅读.assets/image-20240610165529133.png" alt="image-20240610165529133" style="zoom:50%;" />
+
+  * 对应的stages，例如VERTEX_INPUT_STAGE这种，见pdf ep5，如下图：
+
+    <img src="Vulkan阅读.assets/image-20240610170257053.png" alt="image-20240610170257053" style="zoom:67%;" />
+
+    * 其中，color_attachment_output_stage表示渲染好的图片放回了内存中
+
+* compute pipeline：
+  * 可以用来实现一些后处理（用各种核之类的）
+  * 只有两个stage
+
+* ray tracing pipeline：
+  * 只有两个stage，见pdf文件
+
+* <img src="Vulkan阅读.assets/image-20240611131456653.png" alt="image-20240611131456653" style="zoom:67%;" />
+* top 和 bottom 可以改成all 和 none
+* 这一节后面可以重新看看
+
+
+
+### real-time ray-tracing（后续用到的时候再看）
+
+<img src="Vulkan阅读.assets/image-20240611132646004.png" alt="image-20240611132646004" style="zoom:67%;" />
+
+* acceleration structure(AS)
+
+  * instance的概念（如下图中的绿球，是同一个模型，但是经过不同的变换得到的），因此对应相同的bottom-level AS
+
+    <img src="Vulkan阅读.assets/image-20240611133124160.png" alt="image-20240611133124160" style="zoom: 50%;" />
+
+https://www.youtube.com/watch?v=GiKbGWI4M-Y&list=PLmIqTlJ6KsE1Jx5HV4sd2jOe3V1KMHHgn&index=7
+
+
+
+
+
+### synchronizations
+
+* 例子：对于下图中的descriptor A（假设对应的是某一个vkimage），那么对于cmd 1 2 3，就需要对image A的访问进行一个顺序的限制
+
+  <img src="Vulkan阅读.assets/image-20240611141409364.png" alt="image-20240611141409364" style="zoom: 50%;" />
+
+  
+
+* **barrier**：直接写到cmd buffer中，因此在cmd buffer提交后， buffer这层边界变得不重要（**inside queues**）
+
+  * 分为：execution barrier（不关注memory）& memory barrier（关注memory）
+
+  * execution barrier（不考虑access mask）
+
+    * <img src="Vulkan阅读.assets/image-20240611162616280.png" alt="image-20240611162616280" style="zoom: 50%;" />
+
+    **这里就是对应的那个stage mask和access mask的区别，stage mask指的是execution sync，但是access mask指的是memory sync**
+
+  * 补充：**Memory Availability & Visibility**
+
+    * **available**：当数据从内存加载到gpu的L2 cache中之后（且更新为最新阶段），则称memory available，**与之相对应的一定是特定的pipeline stage + access mask**
+    * visible：数据进一步进入L1 cache后，称为visible，**与之相对应的一定是特定的pipeline stage + access mask**
+    * 例如：当前L1中的数据处在Output stage中的write阶段，则此时L1的数据就与L2中原先的数据有区别。如果这个时候别的L1要用这个数据，就会出现问题，**因此这个时候L2又变成unavailable了**。因此使用**memory barrier**来解决这个问题
+
+    <img src="Vulkan阅读.assets/image-20240611164749588.png" alt="image-20240611164749588" style="zoom:50%;" />
+
+  * memory barrier
+
+  * 所以下图的含义：
+
+    第一部分stage中access产生的结果，一定要“available + visible”，to 第二部分stage的access阶段
+
+    <img src="Vulkan阅读.assets/image-20240611165507848.png" alt="image-20240611165507848" style="zoom:50%;" />
+
+    例如这里：available指的是1和2的结果从上面两个L1写入到L2，visible指的是L2中更新的结果再给到左下角L1（对应cmd 3）
+
+
+
+* **semaphore & fences**：则需要cmd buffer这层边界（更准确来说是一堆cmd buffers组成的batches）
+
+  <img src="Vulkan阅读.assets/image-20240611142305761.png" alt="image-20240611142305761" style="zoom: 50%;" />
+
+  * **semaphore**：**queue sync**
+
+    以present queue和graphics queue为例(swap chain)：
+
+    <img src="Vulkan阅读.assets/image-20240611145736014.png" alt="image-20240611145736014" style="zoom: 50%;" />
+
+  * 分为binary semaphore 以及 timeline semaphore
+
+    * **binary semaphore**：等到之后会自动对对应的events进行unsignal操作
+
+      * queue -> queue, device only
+
+    * **timeline semaphore**：如下图（**注意draw 5中的waits on 是5，而physics中还没有到5的位置，这种对未来的提前透支是只有timeline semaphore才有的**）：
+
+      <img src="Vulkan阅读.assets/image-20240611152729677.png" alt="image-20240611152729677" style="zoom: 50%;" />
+
+      <img src="Vulkan阅读.assets/image-20240611153441802.png" alt="image-20240611153441802" style="zoom:67%;" />
+
+      * queue->queue，host<->device 都可以
+
+  * **fence**：**device -> host sync**, host side（等待batch的所有操作结束后signal，不管queue中是否仍然有别的**后续的**cmd没结束），即下图中fence并不会signal——只有A也结束了fence才会signal
+
+    <img src="Vulkan阅读.assets/image-20240611143350134.png" alt="image-20240611143350134" style="zoom: 50%;" />
+
+    <img src="Vulkan阅读.assets/image-20240611143630258.png" alt="image-20240611143630258" style="zoom: 50%;" />
+
+
+
+* **subpass dependencies**
+  * 其实就是image memory barriers
+  * <img src="Vulkan阅读.assets/image-20240611190632266.png" alt="image-20240611190632266" style="zoom:50%;" />
+
+
+
+* event
+  * 就是一个split的barrier，即setevent和waitevent中间的事件不受sync影响，setevent前和waitevent后受影响
+  * 也可以对host进行sync
+
+
+
+整体的描述
+
+<img src="Vulkan阅读.assets/image-20240611191226130.png" alt="image-20240611191226130" style="zoom:50%;" />
+
+waitIdle就是vkwaitQueue，vkwaitDevice这种
 
 
 

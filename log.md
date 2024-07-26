@@ -30,7 +30,7 @@
 
     ***
 
-15. **主程序中vertexBuffer和indexBuffer只需要一个应该是因为是固定的，所以可以被in_flight_frames共享，但是imgui中需要定时重建，重建时如果另一个frame在用的话就会触发validation layer错误，因此可能需要建立多个（目前暂时使用vkDeviceWaitIdle来保证问题不发生，后续改了试试）**
+15. **主程序中vertexBuffer和indexBuffer只需要一个应该是因为是固定的，所以可以被in_flight_frames共享，但是imgui中需要定时重建，重建时如果另一个frame在用的话就会触发validation layer错误，因此可能需要建立多个（目前暂时使用vkDeviceWaitIdle来保证问题不发生，后续改了试试   -- 已修改）**
 
     * 看看有没有办法直接等待一个buffer使用完毕
     * 目前两个问题：1. ~~拖动时出现类似视口不对应问题~~（因为拖动的时候没有及时更新cmdbuffer，即拖动的时候vertexbuffer或者indexbuffer是不会改变的，只有在窗口状态发生变化，例如点击了某个collapsingWindow才会改变，从而recordBuffer）；2. ~~鼠标隐藏时仍然会被捕获~~
@@ -38,3 +38,16 @@
 
 16. 换成per frame record一次之后，改变了setupImgui的位置，发现出现死循环——fence一开始就是true，不会经历从false变为true的过程，导致一直等待
 16. 见vulkan阅读的gltfModel
+16. 看一下descriptor set设置为每个current frame一个是否多余
+
+***
+
+header-only library的常用使用策略（防止多次被包含时的重复定义）
+
+<img src="log.assets/image-20240402115011724.png" alt="image-20240402115011724" style="zoom:50%;" />
+
+<img src="log.assets/image-20240402115027454.png" alt="image-20240402115027454" style="zoom:50%;" />
+
+* 注意点：只需要在一个.cpp文件中包含xxx_implementation这个宏，剩下的是为了是否在tiny_gltf.h中包含其他头文件等，具体可以表现为：
+
+  <img src="log.assets/image-20240402150235889.png" alt="image-20240402150235889" style="zoom:67%;" />
